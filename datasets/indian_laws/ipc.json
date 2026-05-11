@@ -1,0 +1,20 @@
+[
+  {
+    "act_name": "Indian Penal Code",
+    "act_year": "1860",
+    "section_or_article": "420",
+    "title": "Cheating and dishonestly inducing delivery of property",
+    "full_text": "Whoever cheats and thereby dishonestly induces the person deceived to deliver any property.",
+    "keywords": ["cheating", "fraud", "dishonest", "property"],
+    "source_url": "https://www.indiacode.nic.in"
+  },
+  {
+    "act_name": "Indian Penal Code",
+    "act_year": "1860",
+    "section_or_article": "406",
+    "title": "Criminal breach of trust",
+    "full_text": "Whoever commits criminal breach of trust shall be punished.",
+    "keywords": ["breach of trust", "misuse", "trusted property"],
+    "source_url": "https://www.indiacode.nic.in"
+  }
+]

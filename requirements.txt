@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+PyJWT
+sentence-transformers
+numpy
+pandas
+requests
+beautifulsoup4
+selenium
+python-dotenv
+pytesseract
+Pillow
+pdfplumber
