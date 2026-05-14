@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL || "https://legalseva-ai-legal-assistant.onrender.com";
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 async function request(path, options = {}) {
   let res;

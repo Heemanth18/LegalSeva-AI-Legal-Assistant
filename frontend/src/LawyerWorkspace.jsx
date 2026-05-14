@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { LawyerDocumentAnalyser } from "./DocumentAnalyser.jsx";
+import ReactMarkdown from "react-markdown";
 
 const BASE = "http://localhost:8000";
 
@@ -26,88 +27,49 @@ const CASE_TYPES = [
 ];
 
 const TOOLS = [
-  { id: "bail_application", label: "Bail Application",   icon: "🔓", task: "draft",    doc_type: "bail_application", desc: "Sec 437/439 CrPC" },
-  { id: "strategy",         label: "Strategy Planner",   icon: "🧠", task: "strategy", desc: "AI case strategy memo" },
-  { id: "similar",          label: "Similar Cases",      icon: "⚖", task: "similar",  desc: "Precedents across courts" },
-  { id: "legal_notice",     label: "Legal Notice",       icon: "📨", task: "draft",    doc_type: "legal_notice", desc: "Civil / defamation" },
-  { id: "vakalatnama",      label: "Vakalatnama",         icon: "✍", task: "draft",    doc_type: "vakalatnama", desc: "Authority to appear" },
-  { id: "petition",         label: "Petition / Writ",    icon: "📜", task: "draft",    doc_type: "petition", desc: "PIL, HC, SC" },
-  { id: "complaint",        label: "Complaint Draft",    icon: "📋", task: "draft",    doc_type: "complaint", desc: "Police / Magistrate" },
-  { id: "research",         label: "Case Research",      icon: "🔍", task: "research", desc: "Judgements & IPC sections" },
-  { id: "ocr",              label: "Document Analysis",  icon: "📋", task: "ocr",      desc: "Read, brief & verify docs" },
+  { id: "bail_application", label: "Bail Application", icon: "description", task: "draft", doc_type: "bail_application", desc: "Generate automated bail drafts for local courts." },
+  { id: "strategy", label: "Strategy Planner", icon: "strategy", task: "strategy", desc: "AI-driven analysis for defense or prosecution." },
+  { id: "similar", label: "Similar Cases", icon: "travel_explore", task: "similar", desc: "Find relevant precedents and citations instantly." },
+  { id: "judgement_bot", label: "Judgement Bot", icon: "gavel", task: "research", desc: "Predict outcomes based on current evidence." },
+  { id: "citation_finder", label: "Citation Finder", icon: "history_edu", task: "research", desc: "Lookup SCC and AIR citations automatically." },
+  { id: "case_summary", label: "Case Summary", icon: "summarize", task: "research", desc: "Summarize 100+ pages of case law in seconds." },
+  { id: "ocr", label: "Document Analysis", icon: "quick_reference_all", task: "ocr", desc: "Read, brief & verify physical docs via OCR." },
 ];
 
 const COURT_FILTERS = [
-  { value: "all",      label: "All Courts" },
-  { value: "supreme",  label: "Supreme Court" },
-  { value: "high",     label: "High Court (States)" },
+  { value: "all", label: "All Courts" },
+  { value: "supreme", label: "Supreme Court" },
+  { value: "high", label: "High Court" },
   { value: "district", label: "District Courts" },
 ];
 
 const COURT_KW = {
-  supreme:  ["supreme court", "sc"],
-  high:     ["high court", "hc"],
+  supreme: ["supreme court", "sc"],
+  high: ["high court", "hc"],
   district: ["district court", "sessions court", "magistrate", "cjm", "additional sessions"],
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function filterCourts(cases, filter) {
   if (!filter || filter === "all") return cases;
   const kws = COURT_KW[filter] || [];
   return cases.filter(c => kws.some(k => (c?.court || "").toLowerCase().includes(k)));
 }
 
-function SimpleMarkdown({ text }) {
-  if (!text) return null;
-  return (
-    <div className="md-body">
-      {String(text).split("\n").map((line, i) => {
-        if (line.startsWith("## ")) return <h3 key={i} className="md-h2">{line.slice(3)}</h3>;
-        if (line.startsWith("### ")) return <h4 key={i} className="md-h3">{line.slice(4)}</h4>;
-        if (line.startsWith("- ") || line.startsWith("* ")) return <div key={i} className="md-li">• {line.slice(2)}</div>;
-        if (line.match(/^\d+\. /)) return <div key={i} className="md-li">{line}</div>;
-        if (!line.trim()) return <div key={i} style={{ height: 8 }} />;
-        const parts = line.split(/(\*\*[^*]+\*\*)/g);
-        return <p key={i} className="md-p">{parts.map((p, j) => p.startsWith("**") && p.endsWith("**") ? <strong key={j}>{p.slice(2,-2)}</strong> : p)}</p>;
-      })}
-    </div>
-  );
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
-
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CASE DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 
-const STATUS_COLORS = {
-  "Criminal":            { bg: "#fef2f2", color: "#b91c1c", border: "#fca5a5" },
-  "Civil":               { bg: "#eff6ff", color: "#1d4ed8", border: "#93c5fd" },
-  "Family":              { bg: "#fdf4ff", color: "#7e22ce", border: "#d8b4fe" },
-  "Consumer":            { bg: "#fff7ed", color: "#c2410c", border: "#fdba74" },
-  "Constitutional / PIL":{ bg: "#f0fdf4", color: "#15803d", border: "#86efac" },
-  "Cybercrime":          { bg: "#f0f9ff", color: "#0369a1", border: "#7dd3fc" },
-  "Labour / Employment": { bg: "#fefce8", color: "#a16207", border: "#fde047" },
-  "Property / Land":     { bg: "#fdf6e9", color: "#92400e", border: "#fcd34d" },
-  "Other":               { bg: "#f5f5f5", color: "#525252", border: "#d4d4d4" },
-};
-
-function getStatusStyle(type) {
-  return STATUS_COLORS[type] || STATUS_COLORS["Other"];
-}
-
-function formatDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
-}
-
 function CaseDashboard({ cases, onNewCase, onOpenCase, onEditCase, onDeleteCase, meta }) {
-  const [search,    setSearch]    = useState("");
-  const [filter,    setFilter]    = useState("all");
-  const [sortBy,    setSortBy]    = useState("newest");
-  const [confirmDel,setConfirmDel]= useState(null);
-
-  const caseTypes = ["all", ...Array.from(new Set(cases.map(c => c.caseType).filter(Boolean)))];
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
+  const [confirmDel, setConfirmDel] = useState(null);
 
   const filtered = cases
     .filter(c => {
@@ -115,298 +77,204 @@ function CaseDashboard({ cases, onNewCase, onOpenCase, onEditCase, onDeleteCase,
       if (!search.trim()) return true;
       const s = search.toLowerCase();
       return (
-        (c.clientName  || "").toLowerCase().includes(s) ||
+        (c.clientName || "").toLowerCase().includes(s) ||
         (c.accusedName || "").toLowerCase().includes(s) ||
-        (c.sections    || "").toLowerCase().includes(s) ||
+        (c.sections || "").toLowerCase().includes(s) ||
         (c.description || "").toLowerCase().includes(s) ||
-        (c.firNumber   || "").toLowerCase().includes(s) ||
-        (c.court       || "").toLowerCase().includes(s)
+        (c.firNumber || "").toLowerCase().includes(s) ||
+        (c.court || "").toLowerCase().includes(s)
       );
     })
     .sort((a, b) => {
       if (sortBy === "newest") return new Date(b.updatedAt) - new Date(a.updatedAt);
       if (sortBy === "oldest") return new Date(a.updatedAt) - new Date(b.updatedAt);
-      if (sortBy === "client") return (a.clientName||"").localeCompare(b.clientName||"");
       return 0;
     });
 
   return (
-    <div className="dashboard-shell">
-      {/* Header row */}
-      <div className="dashboard-header">
+    <section className="flex flex-col gap-[1.5rem] animate-fade-in">
+      <div className="flex justify-between items-end">
         <div>
-          <h2 className="dashboard-title">My Cases</h2>
-          <p className="dashboard-sub">
-            Welcome back, <strong>{meta?.name || "Advocate"}</strong> · {cases.length} case{cases.length !== 1 ? "s" : ""} saved
-          </p>
+          <h1 className="font-headline-lg text-headline-lg text-white">My Cases</h1>
+          <p className="text-on-surface-variant font-body-md opacity-80 mt-1">Welcome back, <strong>{meta?.name || "Advocate"}</strong> · {cases.length} active case files.</p>
         </div>
-        <button className="btn-primary lawyer-btn dashboard-new-btn" onClick={onNewCase}>
-          + New Case
+        <button className="gold-bg-gradient text-on-primary-fixed py-[9px] px-[20px] rounded-[10px] font-bold flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-primary/20" onClick={onNewCase}>
+          <span className="material-symbols-outlined align-middle">add</span>
+          New Case
         </button>
       </div>
 
-      {/* Empty state */}
-      {cases.length === 0 && (
-        <div className="dashboard-empty">
-          <div className="dashboard-empty-icon">📁</div>
-          <div className="dashboard-empty-title">No cases yet</div>
-          <div className="dashboard-empty-sub">Click "New Case" to add your first case description</div>
-          <button className="btn-primary lawyer-btn" onClick={onNewCase} style={{marginTop:"1rem"}}>
-            + Add First Case
-          </button>
+      <div className="flex flex-wrap items-center gap-[1rem] bg-surface-container p-2 rounded-[16px] border border-white/5">
+        <div className="flex-grow min-w-[240px] relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 align-middle">search</span>
+          <input 
+            className="w-full bg-surface-container-low border border-white/5 rounded-[10px] pl-10 pr-4 py-[9px] text-body-md text-white focus:border-primary outline-none transition-all placeholder:text-on-surface-variant/20" 
+            placeholder="Search cases..." 
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-      )}
+        <select className="bg-surface-container-low border border-white/5 rounded-[10px] px-4 py-[9px] text-label-md font-bold text-on-surface focus:border-primary outline-none transition-all cursor-pointer" value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="all">All Types</option>
+          {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="bg-surface-container-low border border-white/5 rounded-[10px] px-4 py-[9px] text-label-md font-bold text-on-surface focus:border-primary outline-none transition-all cursor-pointer" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="newest">Latest First</option>
+          <option value="oldest">Oldest First</option>
+        </select>
+      </div>
 
-      {cases.length > 0 && (
-        <>
-          {/* Search + filter bar */}
-          <div className="dashboard-controls">
-            <input
-              className="form-input dashboard-search"
-              placeholder="🔍  Search by client, accused, FIR, section, court…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <select className="form-input dashboard-filter" value={filter} onChange={e => setFilter(e.target.value)}>
-              {caseTypes.map(t => <option key={t} value={t}>{t === "all" ? "All types" : t}</option>)}
-            </select>
-            <select className="form-input dashboard-sort" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="client">Client A–Z</option>
-            </select>
-          </div>
-
-          {/* Stats row */}
-          <div className="dashboard-stats-row">
-            {Object.entries(
-              cases.reduce((acc, c) => { acc[c.caseType || "Other"] = (acc[c.caseType || "Other"] || 0) + 1; return acc; }, {})
-            ).map(([type, count]) => {
-              const s = getStatusStyle(type);
-              return (
-                <button key={type} className="dash-stat-pill"
-                  style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
-                  onClick={() => setFilter(filter === type ? "all" : type)}>
-                  {type} · {count}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Case grid */}
-          {filtered.length === 0 ? (
-            <div className="dashboard-empty" style={{padding:"2rem"}}>
-              <div style={{fontSize:13,color:"var(--text-tertiary)"}}>No cases match your search.</div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[1.25rem]">
+        {filtered.map(c => (
+          <div key={c.id} className="bg-surface-container-low p-[1.25rem] rounded-[16px] border border-white/5 flex flex-col gap-[8px] hover:translate-y-[-4px] transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 group relative">
+            <div className="flex justify-between items-start">
+              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-[6px] font-bold text-[10px] uppercase tracking-widest">{c.caseType || "Criminal"}</span>
+              <span className="text-on-surface-variant/40 font-bold text-[10px] uppercase tracking-widest">{formatDate(c.updatedAt)}</span>
             </div>
-          ) : (
-            <div className="case-cards-grid">
-              {filtered.map(c => {
-                const s = getStatusStyle(c.caseType);
-                return (
-                  <div key={c.id} className="case-dash-card">
-                    {/* Type badge */}
-                    <div className="case-dash-top">
-                      <span className="case-dash-type" style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-                        {c.caseType || "General"}
-                      </span>
-                      <span className="case-dash-date">{formatDate(c.updatedAt)}</span>
-                    </div>
-
-                    {/* Client / accused */}
-                    <div className="case-dash-client">
-                      {c.clientName || <span style={{color:"var(--text-tertiary)"}}>Unnamed client</span>}
-                    </div>
-                    {c.accusedName && (
-                      <div className="case-dash-accused">vs. {c.accusedName}</div>
-                    )}
-
-                    {/* Sections */}
-                    {c.sections && (
-                      <div className="case-dash-sections">{c.sections}</div>
-                    )}
-
-                    {/* Description preview */}
-                    {c.description && (
-                      <div className="case-dash-desc">
-                        {c.description.slice(0, 100)}{c.description.length > 100 ? "…" : ""}
-                      </div>
-                    )}
-
-                    {/* Meta chips */}
-                    <div className="case-dash-meta">
-                      {c.court        && <span className="case-dash-chip">🏛 {c.court}</span>}
-                      {c.firNumber    && <span className="case-dash-chip">📋 FIR {c.firNumber}</span>}
-                      {c.policeStation&& <span className="case-dash-chip">🚔 {c.policeStation}</span>}
-                      {c.witnesses    && <span className="case-dash-chip">👁 {c.witnesses}</span>}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="case-dash-actions">
-                      <button className="btn-primary lawyer-btn sm" onClick={() => onOpenCase(c)}>
-                        Open Case →
-                      </button>
-                      <button className="btn-outline sm" onClick={() => onEditCase(c)}>Edit</button>
-                      <button className="btn-outline sm danger-outline"
-                        onClick={() => setConfirmDel(c.id)}>Delete</button>
-                    </div>
-
-                    {/* Delete confirm */}
-                    {confirmDel === c.id && (
-                      <div className="case-dash-confirm">
-                        <span style={{fontSize:13,color:"var(--danger)"}}>Delete this case?</span>
-                        <button className="btn-outline sm" style={{color:"var(--danger)",borderColor:"var(--danger)"}}
-                          onClick={() => { onDeleteCase(c.id); setConfirmDel(null); }}>Yes, delete</button>
-                        <button className="btn-outline sm" onClick={() => setConfirmDel(null)}>Cancel</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <h3 className="font-headline-md text-base text-white line-clamp-2 mt-2">{c.clientName} vs. {c.accusedName || "State"}</h3>
+            <p className="text-xs text-on-surface-variant/60 line-clamp-2 leading-relaxed">{c.description}</p>
+            <div className="mt-auto flex gap-2 pt-4 border-t border-white/5">
+              <button className="flex-grow py-[6px] px-[14px] bg-white/5 hover:gold-bg-gradient hover:text-on-primary-fixed rounded-[10px] font-bold text-[11px] uppercase tracking-widest transition-all" onClick={() => onOpenCase(c)}>Open</button>
+              <button className="p-2 bg-white/5 hover:bg-white/10 rounded-[10px] transition-colors" onClick={() => onEditCase(c)}><span className="material-symbols-outlined text-sm align-middle">edit</span></button>
+              <button className="p-2 bg-white/5 hover:bg-error/10 text-error rounded-[10px] transition-colors" onClick={() => setConfirmDel(c.id)}><span className="material-symbols-outlined text-sm align-middle">delete</span></button>
             </div>
-          )}
-        </>
-      )}
-    </div>
+            {confirmDel === c.id && (
+              <div className="absolute inset-0 bg-surface/95 backdrop-blur-sm flex flex-col items-center justify-center p-[1.25rem] rounded-[16px] z-10 text-center gap-4">
+                <p className="text-xs font-bold uppercase tracking-widest">Delete Case File?</p>
+                <div className="flex gap-2">
+                  <button className="px-4 py-2 bg-error text-white rounded-[10px] text-[10px] font-bold uppercase tracking-widest" onClick={() => { onDeleteCase(c.id); setConfirmDel(null); }}>Confirm</button>
+                  <button className="px-4 py-2 bg-white/10 rounded-[10px] text-[10px] font-bold uppercase tracking-widest" onClick={() => setConfirmDel(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="col-span-full py-20 text-center bg-surface-container rounded-[16px] border border-white/5 border-dashed">
+            <span className="material-symbols-outlined text-4xl text-on-surface-variant/10 align-middle">folder_open</span>
+            <p className="text-on-surface-variant/30 mt-4 font-bold uppercase tracking-[0.3em] text-[10px]">Empty Archive</p>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
-// ── STEP 1: Case Description Form ────────────────────────────────────────────
+// ── STEP 2: Case Description Form ────────────────────────────────────────────
 function CaseDescriptionForm({ onSubmit, initialData, onBack }) {
   const [form, setForm] = useState(initialData || {
-    clientName:    "",
-    accusedName:   "",
-    caseType:      "",
-    sections:      "",
-    description:   "",
-    witnesses:     "",
+    clientName: "",
+    accusedName: "",
+    caseType: "Criminal",
+    sections: "",
+    description: "",
+    witnesses: "",
     policeStation: "",
-    firNumber:     "",
-    court:         "",
+    firNumber: "",
+    court: "",
   });
   const [error, setError] = useState("");
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setError(""); }
 
-  function submit() {
-    if (!form.description.trim()) { setError("Please provide a case description."); return; }
-    if (!form.caseType) { setError("Please select a case type."); return; }
+  function submit(e) {
+    e.preventDefault();
+    if (!form.description.trim()) { setError("Description required."); return; }
     onSubmit(form);
   }
 
   return (
-    <div className="case-form-shell">
-      <div className="case-form-header">
-        <div className="case-form-icon">📁</div>
-        <div>
-          <h2 className="case-form-title">Case Description</h2>
-          <p className="case-form-sub">Fill in the details — then choose what you need</p>
-        </div>
+    <section className="bg-surface-container p-[1.5rem] md:p-[2rem] rounded-[16px] border border-white/5 flex flex-col gap-[1.5rem] animate-fade-in shadow-2xl">
+      <div className="border-b border-white/5 pb-4">
+        <h2 className="font-headline-lg text-headline-md text-white">Case Intake</h2>
+        <p className="text-on-surface-variant font-body-md mt-1 opacity-60">High-fidelity metadata for AI legal drafting.</p>
       </div>
-
-      <div className="case-form-grid">
-        {/* Row 1 */}
-        <div className="form-group">
-          <label className="form-label">Client Name</label>
-          <input className="form-input" placeholder="e.g. Rajesh Kumar" value={form.clientName}
-            onChange={e => set("clientName", e.target.value)} />
+      <form className="grid grid-cols-1 min-[860px]:grid-cols-2 gap-y-[1rem] gap-x-[1.25rem]" onSubmit={submit}>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Client Name</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.clientName} onChange={e => set("clientName", e.target.value)} placeholder="Full Name" />
         </div>
-        <div className="form-group">
-          <label className="form-label">Accused / Opposite Party Name</label>
-          <input className="form-input" placeholder="e.g. Suresh Rao" value={form.accusedName}
-            onChange={e => set("accusedName", e.target.value)} />
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Accused Name</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.accusedName} onChange={e => set("accusedName", e.target.value)} placeholder="State vs. ..." />
         </div>
-
-        {/* Row 2 */}
-        <div className="form-group">
-          <label className="form-label">Type of Case <span className="req">*</span></label>
-          <select className="form-input" value={form.caseType} onChange={e => set("caseType", e.target.value)}>
-            <option value="">Select type…</option>
-            {CASE_TYPES.map(t => <option key={t}>{t}</option>)}
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Type of Case</label>
+          <select className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all cursor-pointer" value={form.caseType} onChange={e => set("caseType", e.target.value)}>
+            {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
-        <div className="form-group">
-          <label className="form-label">Sections Filed / Framed</label>
-          <input className="form-input" placeholder="e.g. IPC 302, 307, 34" value={form.sections}
-            onChange={e => set("sections", e.target.value)} />
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Sections</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.sections} onChange={e => set("sections", e.target.value)} placeholder="IPC / CrPC Sections" />
         </div>
+        <div className="flex flex-col col-span-full">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Facts/Description</label>
+          <textarea className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all resize-none placeholder:text-on-surface-variant/10 min-h-[160px] leading-relaxed" rows="5" value={form.description} onChange={e => set("description", e.target.value)} placeholder="Chronological facts..."></textarea>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Witnesses</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.witnesses} onChange={e => set("witnesses", e.target.value)} placeholder="Witness details" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Court</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.court} onChange={e => set("court", e.target.value)} placeholder="e.g. Sessions Court" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">Police Station</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.policeStation} onChange={e => set("policeStation", e.target.value)} placeholder="e.g. Vasant Kunj" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-[6px] ml-1">FIR Number</label>
+          <input className="bg-surface-container-low border border-white/5 rounded-[10px] text-body-md text-white focus:border-primary py-[9px] px-[12px] outline-none transition-all placeholder:text-on-surface-variant/10" value={form.firNumber} onChange={e => set("firNumber", e.target.value)} placeholder="e.g. 123/2024" />
+        </div>
+      </form>
+      {error && <p className="text-error text-[10px] font-bold ml-1 uppercase tracking-[0.3em]">⚠️ {error}</p>}
+      <footer className="flex justify-between items-center pt-6 border-t border-white/5 mt-4">
+        <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant hover:text-white flex items-center gap-2 transition-colors" onClick={onBack}>
+          <span className="material-symbols-outlined align-middle">arrow_back</span>
+          Dashboard
+        </button>
+        <button className="gold-bg-gradient text-on-primary-fixed py-[9px] px-[20px] rounded-[10px] font-bold flex items-center gap-2 hover:shadow-2xl hover:shadow-primary/30 transition-all active:scale-95 uppercase tracking-widest text-[11px]" onClick={submit}>
+          Next Step
+          <span className="material-symbols-outlined align-middle">arrow_forward</span>
+        </button>
+      </footer>
+    </section>
+  );
+}
 
-        {/* Row 3 - full width */}
-        <div className="form-group full-width">
-          <label className="form-label">Description of Crime / Case <span className="req">*</span></label>
-          <textarea className="form-input facts-area" rows={5}
-            placeholder="Describe the facts: what happened, when, where, how. Include any prior orders, bail history, key evidence…"
-            value={form.description} onChange={e => set("description", e.target.value)} />
+// ── STEP 3: Tool Selector ─────────────────────────────────────────────────────
+function ToolSelector({ caseData, onSelect, onBack }) {
+  return (
+    <section className="flex flex-col gap-[1.5rem] animate-fade-in">
+      <div className="flex justify-between items-center px-1">
+        <div>
+          <h2 className="font-headline-lg text-headline-md text-white tracking-tight">Intelligence Suite</h2>
+          <p className="text-on-surface-variant font-body-md opacity-60">Working on: <strong className="text-primary">{caseData.clientName}</strong></p>
         </div>
-
-        {/* Row 4 */}
-        <div className="form-group">
-          <label className="form-label">Witnesses Available</label>
-          <input className="form-input" placeholder="Names or count, e.g. 2 eyewitnesses" value={form.witnesses}
-            onChange={e => set("witnesses", e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Court (if known)</label>
-          <input className="form-input" placeholder="e.g. Sessions Court, Bengaluru" value={form.court}
-            onChange={e => set("court", e.target.value)} />
-        </div>
-
-        {/* Row 5 */}
-        <div className="form-group">
-          <label className="form-label">Police Station</label>
-          <input className="form-input" placeholder="e.g. Indiranagar PS" value={form.policeStation}
-            onChange={e => set("policeStation", e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">FIR Number (if registered)</label>
-          <input className="form-input" placeholder="e.g. 123/2024" value={form.firNumber}
-            onChange={e => set("firNumber", e.target.value)} />
-        </div>
-      </div>
-
-      {error && <div className="form-error">{error}</div>}
-
-      <div style={{display:"flex",gap:"8px",marginTop:"0.5rem"}}>
-        {onBack && <button className="btn-outline" style={{flex:"0 0 auto"}} onClick={onBack}>← Dashboard</button>}
-        <button className="btn-primary lawyer-btn" style={{flex:1}} onClick={submit}>
-          Continue — Choose Action →
+        <button className="text-on-surface-variant hover:text-on-surface flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] border border-white/10 rounded-full px-4 py-1.5 bg-white/5 transition-all" onClick={onBack}>
+          <span className="material-symbols-outlined text-sm align-middle">edit</span> Edit Intake
         </button>
       </div>
-    </div>
-  );
-}
-
-// ── STEP 2: Tool Selector ─────────────────────────────────────────────────────
-function ToolSelector({ caseData, onSelect, onBack, onDashboard }) {
-  return (
-    <div className="tool-selector-shell">
-      <div className="tool-selector-header">
-        <button className="back-link" onClick={onBack}>← Edit case details</button>
-        {onDashboard && <button className="back-link" style={{marginLeft:"auto",color:"var(--primary)"}} onClick={onDashboard}>📁 Dashboard</button>}
-        <div className="case-pill-summary">
-          <span className="case-pill-type">{caseData.caseType}</span>
-          {caseData.clientName && <span className="case-pill-client">{caseData.clientName}</span>}
-          {caseData.sections && <span className="case-pill-sections">{caseData.sections}</span>}
-        </div>
-      </div>
-      <h2 className="tool-selector-title">What do you need?</h2>
-      <p className="tool-selector-sub">Select an action based on your case</p>
-      <div className="tools-grid">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-[12px]">
         {TOOLS.map(tool => (
-          <button key={tool.id} className="tool-card" onClick={() => onSelect(tool)}>
-            <span className="tool-icon">{tool.icon}</span>
-            <span className="tool-label">{tool.label}</span>
-            <span className="tool-desc">{tool.desc}</span>
-          </button>
+          <div key={tool.id} className="bg-surface-container-low p-[1.5rem] rounded-[16px] border border-white/5 flex flex-col items-start gap-[8px] cursor-pointer hover:border-primary/40 group transition-all shadow-lg" onClick={() => onSelect(tool)}>
+            <span className="material-symbols-outlined gold-text-gradient text-4xl group-hover:scale-110 transition-transform mb-2 align-middle">{tool.icon}</span>
+            <h4 className="font-bold text-sm text-white tracking-wide uppercase">{tool.label}</h4>
+            <p className="text-[11px] text-on-surface-variant/60 leading-relaxed font-medium">{tool.desc}</p>
+          </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
-// ── STEP 3: Result Panel ──────────────────────────────────────────────────────
+// ── STEP 4: Result Panel ──────────────────────────────────────────────────────
 function ResultPanel({ tool, result, docResult, loading, error, courtFilter, setCourtFilter, token, onBack, onCancel }) {
   function copyDoc() {
-    if (docResult?.document) navigator.clipboard.writeText(docResult.document).catch(() => {});
+    if (docResult?.document) navigator.clipboard.writeText(docResult.document).catch(() => { });
   }
   function downloadDoc() {
     if (!docResult?.document) return;
@@ -416,163 +284,171 @@ function ResultPanel({ tool, result, docResult, loading, error, courtFilter, set
     a.click();
   }
 
-  const allCases      = result?.cases || [];
+  const allCases = result?.cases || [];
   const filteredCases = tool.task === "similar" ? filterCourts(allCases, courtFilter) : allCases;
 
   return (
-    <div className="result-panel-shell">
-      <div className="result-panel-header">
-        <button className="back-link" onClick={onBack}>← Back to tools</button>
-        <div className="result-tool-badge">
-          <span>{tool.icon}</span> {tool.label}
+    <section className="flex flex-col gap-[1.5rem] animate-fade-in">
+      <div className="flex justify-between items-center px-1">
+        <div className="flex items-center gap-4">
+          {loading ? (
+            <span className="bg-primary/10 text-primary border border-primary/20 px-4 py-1.5 rounded-[10px] font-bold text-[10px] uppercase tracking-[0.25em] animate-pulse">Processing Neural Nodes...</span>
+          ) : (
+            <span className="gold-bg-gradient text-on-primary-fixed px-4 py-1.5 rounded-[10px] font-bold text-[10px] uppercase tracking-[0.25em] shadow-lg shadow-primary/20">Analysis Hydrated</span>
+          )}
+          <button className="text-on-surface-variant hover:text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors ml-4" onClick={onBack}>
+            <span className="material-symbols-outlined text-sm align-middle">arrow_back_ios</span>
+            Back to Tools
+          </button>
         </div>
+        {!loading && (
+          <div className="flex gap-2">
+            <button className="p-2 hover:bg-white/5 rounded-[10px] text-on-surface-variant transition-colors"><span className="material-symbols-outlined align-middle">ios_share</span></button>
+            <button className="p-2 hover:bg-white/5 rounded-[10px] text-on-surface-variant transition-colors"><span className="material-symbols-outlined align-middle">print</span></button>
+          </div>
+        )}
       </div>
 
+      {tool.task === "similar" && allCases.length > 0 && !loading && (
+        <div className="flex flex-wrap gap-2 pb-2 px-1">
+          {COURT_FILTERS.map(cf => (
+            <button 
+              key={cf.value}
+              className={`py-[6px] px-[14px] rounded-full text-[10px] font-bold uppercase tracking-[0.15em] transition-all ${courtFilter === cf.value ? "gold-bg-gradient text-on-primary-fixed shadow-lg shadow-primary/10" : "bg-white/5 text-on-surface-variant/60 hover:bg-white/10 border border-white/10"}`}
+              onClick={() => setCourtFilter(cf.value)}
+            >
+              {cf.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && (
-        <>
-          <div className="result-loading-msg">
-            ⏳ {tool.task === "draft" ? "Drafting document" : tool.task === "strategy" ? "Building strategy" : "Searching"} — please wait…
-            <button className="btn-outline sm" style={{ marginLeft: 12 }} onClick={onCancel}>Cancel</button>
+        <div className="flex flex-col gap-[1.5rem]">
+          <div className="bg-surface-container rounded-[16px] p-[3rem] border border-white/5 flex flex-col gap-4 items-center text-center shadow-2xl">
+            <div className="flex gap-2 items-center py-4">
+              <span className="w-3 h-3 rounded-full bg-primary animate-bounce"></span>
+              <span className="w-3 h-3 rounded-full bg-primary animate-bounce [animation-delay:0.2s]"></span>
+              <span className="w-3 h-3 rounded-full bg-primary animate-bounce [animation-delay:0.4s]"></span>
+            </div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.4em] text-on-surface-variant/40">Aggregating Legal Precedents</p>
+            <button className="mt-8 py-[6px] px-[14px] rounded-[10px] border border-white/5 text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/40 hover:text-white transition-all" onClick={onCancel}>Abort Inference</button>
           </div>
-          <div className="skeleton-area">
-            <div className="skeleton-line w80" /><div className="skeleton-line w60" />
-            <div className="skeleton-line w90" /><div className="skeleton-line w50" />
-          </div>
-        </>
+        </div>
       )}
 
       {error && (
-        <div className="error-box">
-          <div className="error-title">Something went wrong</div>
-          <div className="error-short">{error}</div>
-          <div style={{ fontSize: 12, color: "#9a9a9a", marginTop: 6 }}>Make sure Ollama is running: <code>ollama serve</code></div>
+        <div className="bg-error/5 rounded-[16px] p-[2.5rem] border border-error/20 flex flex-col items-center gap-3 animate-fade-in shadow-xl">
+          <span className="material-symbols-outlined text-error text-4xl align-middle">report</span>
+          <h3 className="text-error font-bold uppercase tracking-[0.3em] text-[10px]">Inference Disrupted</h3>
+          <p className="text-on-surface-variant/80 text-sm font-medium">{error}</p>
         </div>
       )}
 
-      {/* Draft result */}
-      {!loading && docResult && (
-        <div className="result-area">
-          <div className="draft-toolbar">
-            <h3 className="section-heading">Draft — {(tool.doc_type || "").replace(/_/g, " ")}</h3>
-            <div className="draft-actions">
-              <button className="btn-outline sm" onClick={copyDoc}>Copy</button>
-              <button className="btn-outline sm" onClick={downloadDoc}>Download .txt</button>
-            </div>
-          </div>
-          {docResult.instructions && <div className="instructions-box">ℹ {docResult.instructions}</div>}
-          <pre className="draft-text">{docResult.document}</pre>
-        </div>
-      )}
-
-      {/* Research / Strategy / Similar result */}
-      {!loading && result && (
-        <div className="result-area">
-          {result.answer && (
-            <div className={`result-answer ${tool.task === "strategy" ? "strategy-result" : ""}`}>
-              <SimpleMarkdown text={result.answer} />
-            </div>
-          )}
-
-          {Array.isArray(result.applicable_sections) && result.applicable_sections.length > 0 && (
-            <div className="section-chips">
-              {result.applicable_sections.map((s, i) => (
-                <span key={i} className="section-chip">§ {s?.section || s} {s?.title || ""}</span>
-              ))}
-            </div>
-          )}
-
-          {/* OCR panel */}
-      {tool.task === "ocr" && !loading && (
-        <LawyerDocumentAnalyser token={token} />
-      )}
-
-      {/* Court filter for similar cases */}
-          {tool.task === "similar" && allCases.length > 0 && (
-            <div className="court-filter-row" style={{ marginTop: "1rem" }}>
-              <span className="court-filter-label">Filter by court:</span>
-              <div className="court-filter-pills">
-                {COURT_FILTERS.map(cf => (
-                  <button key={cf.value}
-                    className={`court-pill ${courtFilter === cf.value ? "active" : ""}`}
-                    onClick={() => setCourtFilter(cf.value)}>
-                    {cf.label}
-                  </button>
-                ))}
+      {!loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1.5rem]">
+          <div className="lg:col-span-2 flex flex-col gap-[1.5rem]">
+            {docResult && (
+              <div className="bg-surface-container rounded-[16px] overflow-hidden border border-white/5 shadow-2xl">
+                <div className="bg-white/5 px-6 py-4 flex justify-between items-center border-b border-white/5">
+                  <span className="font-bold text-[9px] text-on-surface-variant/60 uppercase tracking-[0.3em]">Draft Preview</span>
+                  <div className="flex gap-4">
+                    <button className="gold-text-gradient font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2 hover:brightness-125 transition-all" onClick={copyDoc}><span className="material-symbols-outlined text-sm align-middle">content_copy</span> Copy</button>
+                    <button className="gold-text-gradient font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-2 hover:brightness-125 transition-all" onClick={downloadDoc}><span className="material-symbols-outlined text-sm align-middle">download</span> Save</button>
+                  </div>
+                </div>
+                <div className="p-[2.5rem] font-serif text-on-surface/90 whitespace-pre-wrap leading-loose text-sm bg-surface-container-low/20">
+                  {docResult.document}
+                </div>
               </div>
-            </div>
-          )}
-
-          {filteredCases.length > 0 && (
-            <div className="cases-list" style={{ marginTop: "1rem" }}>
-              <div className="cases-list-header">
-                <h3 className="section-heading" style={{ margin: 0 }}>
-                  {tool.task === "strategy" ? "Key precedents" : tool.task === "similar" ? "Similar cases" : "Relevant cases"}
-                </h3>
-                {tool.task === "similar" && (
-                  <span className="cases-count-badge">
-                    {filteredCases.length === allCases.length ? `${allCases.length} found` : `${filteredCases.length} of ${allCases.length}`}
-                  </span>
+            )}
+            
+            {result && (
+              <div className="bg-surface-container rounded-[16px] p-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                  <span className="material-symbols-outlined text-8xl">verified</span>
+                </div>
+                <div className="prose prose-invert max-w-none prose-p:text-on-surface/80 prose-headings:gold-text-gradient prose-headings:tracking-tight prose-headings:font-bold prose-p:leading-relaxed prose-strong:text-white">
+                  <ReactMarkdown>{result.answer}</ReactMarkdown>
+                </div>
+                {result.applicable_sections && (
+                   <div className="flex flex-wrap gap-2 mt-10 pt-10 border-t border-white/5">
+                      {result.applicable_sections.map((s, i) => (
+                        <span key={i} className="px-3 py-1 bg-primary/5 text-primary rounded-[6px] text-[9px] font-bold border border-primary/20 uppercase tracking-[0.2em]">
+                          § {typeof s === 'string' ? s : s.section}
+                        </span>
+                      ))}
+                   </div>
                 )}
               </div>
-              {filteredCases.length === 0 ? (
-                <div className="no-cases-msg">No cases for selected court. Try "All Courts".</div>
-              ) : filteredCases.map((c, i) => <CaseCard key={i} c={c} showSimilarity={tool.task === "similar"} />)}
+            )}
+
+            {tool.task === "ocr" && <LawyerDocumentAnalyser token={token} />}
+          </div>
+
+          <div className="flex flex-col gap-[1.5rem]">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/30 px-2">Library Citations</h3>
+            <div className="flex flex-col gap-[12px]">
+              {filteredCases.map((c, i) => (
+                <CaseCard key={i} c={c} />
+              ))}
+              {filteredCases.length === 0 && !loading && (
+                <div className="px-4 py-12 bg-white/5 rounded-[16px] text-center border border-dashed border-white/5 opacity-40">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.4em]">Zero Matches Found</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-function CaseCard({ c, showSimilarity }) {
+function CaseCard({ c }) {
   const [open, setOpen] = useState(false);
   const outcome = c?.outcome_for_client || "";
-  const color = outcome === "favourable" ? "#0d5c3a" : outcome === "unfavourable" ? "#b91c1c" : "#6b7280";
+  const color = outcome === "favourable" ? "#4ADE80" : outcome === "unfavourable" ? "#F87171" : "#9CA3AF";
+  
   return (
-    <div className="case-card" onClick={() => setOpen(o => !o)}>
-      <div className="case-card-top">
-        <div className="case-name">{c?.case_name || c?.title || "Untitled"}</div>
-        <div className="case-meta-row">
-          {c?.court && <span className="badge gray">{c.court}</span>}
-          {c?.year  && <span className="badge gray">{c.year}</span>}
-          {outcome  && <span className="badge" style={{ color, borderColor: color }}>{outcome}</span>}
-        </div>
+    <div className={`bg-surface-container-low p-[1.5rem] rounded-[16px] border transition-all cursor-pointer ${open ? "border-primary/40 bg-primary/5 shadow-2xl" : "border-white/5 hover:border-white/10"}`} onClick={() => setOpen(!open)}>
+      <h4 className="font-bold gold-text-gradient mb-2 text-sm tracking-wide">{c?.case_name || c?.title || "Untitled Case"}</h4>
+      <p className={`text-[11px] text-on-surface-variant/80 leading-relaxed font-medium ${open ? "" : "line-clamp-2"}`}>
+        {c?.key_holding || c?.key_principle || c?.summary || "Decision details pending further analysis."}
+      </p>
+      <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/5">
+         <span className="text-[10px] text-on-surface-variant/40 font-bold uppercase tracking-widest">{c?.year || c?.citation || "CITE_PENDING"}</span>
+         {outcome && <span className="text-[9px] font-bold uppercase tracking-[0.2em] px-2 py-0.5 rounded-[4px] bg-white/5" style={{ color }}>{outcome}</span>}
       </div>
-      {c?.citation && <div className="case-citation">{c.citation}</div>}
-      <div className="case-holding">{c?.key_holding || c?.key_principle || ""}</div>
       {open && (
-        <div className="case-expanded">
-          {c?.similarity_reason && <p><strong>Why similar:</strong> {c.similarity_reason}</p>}
-          {c?.relevance          && <p><strong>Relevance:</strong> {c.relevance}</p>}
-          {showSimilarity && outcome && <p><strong>Outcome for client:</strong> <span style={{ color }}>{outcome}</span></p>}
+        <div className="mt-4 pt-4 text-[11px] text-on-surface-variant space-y-4 border-t border-white/5 opacity-80">
+          {c?.similarity_reason && <p><strong className="text-white uppercase tracking-widest text-[9px] opacity-40">Similarity Reason</strong><br/><span className="mt-1 block">{c.similarity_reason}</span></p>}
+          {c?.relevance && <p><strong className="text-white uppercase tracking-widest text-[9px] opacity-40">Court Relevance</strong><br/><span className="mt-1 block">{c.relevance}</span></p>}
         </div>
       )}
-      <div className="case-toggle">{open ? "▲ less" : "▼ more"}</div>
     </div>
   );
 }
 
 // ── Main Workspace ────────────────────────────────────────────────────────────
 export default function LawyerWorkspace({ token, meta, onLogout }) {
-  // Steps: "dashboard" | "form" → "tools" → "result"
-  const [step,         setStep]         = useState("dashboard");
-  const [cases,        setCases]        = useState(() => {
+  const [step, setStep] = useState("dashboard"); // dashboard | form | tools | result
+  const [cases, setCases] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ls_cases") || "[]"); }
     catch { return []; }
   });
-  const [caseData,     setCaseData]     = useState(null);
+  const [caseData, setCaseData] = useState(null);
   const [selectedTool, setSelectedTool] = useState(null);
-  const [loading,      setLoading]      = useState(false);
-  const [result,       setResult]       = useState(null);
-  const [docResult,    setDocResult]    = useState(null);
-  const [error,        setError]        = useState("");
-  const [courtFilter,  setCourtFilter]  = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [docResult, setDocResult] = useState(null);
+  const [error, setError] = useState("");
+  const [courtFilter, setCourtFilter] = useState("all");
   const abortRef = useRef(null);
 
-  function handleCaseSubmit(data, existingId = null) {
+  function handleCaseSubmit(data) {
+    const existingId = caseData?.id;
     setCaseData(data);
-    // Save/update case in localStorage
     const now = new Date().toISOString();
     let updated;
     if (existingId) {
@@ -600,7 +476,6 @@ export default function LawyerWorkspace({ token, meta, onLogout }) {
     setError("");
     setCourtFilter("all");
 
-    // OCR tool renders its own UI — no LLM call needed here
     if (tool.task === "ocr") return;
 
     if (abortRef.current) abortRef.current.abort();
@@ -608,14 +483,13 @@ export default function LawyerWorkspace({ token, meta, onLogout }) {
     abortRef.current = ctrl;
     setLoading(true);
 
-    // Build text from caseData
     const text = buildPrompt(caseData, tool);
 
     try {
       const body = {
-        text:      text.slice(0, 3000),
-        task:      tool.task,
-        doc_type:  tool.doc_type || null,
+        text: text.slice(0, 3000),
+        task: tool.task,
+        doc_type: tool.doc_type || null,
         case_meta: caseData,
       };
       const data = await lawyerRequest("/lawyer/analyze", body, token, ctrl.signal);
@@ -630,15 +504,15 @@ export default function LawyerWorkspace({ token, meta, onLogout }) {
 
   function buildPrompt(d, tool) {
     const lines = [];
-    if (d.clientName)    lines.push(`Client: ${d.clientName}`);
-    if (d.accusedName)   lines.push(`Accused: ${d.accusedName}`);
-    if (d.caseType)      lines.push(`Case type: ${d.caseType}`);
-    if (d.sections)      lines.push(`Sections: ${d.sections}`);
-    if (d.description)   lines.push(`Facts: ${d.description}`);
-    if (d.witnesses)     lines.push(`Witnesses: ${d.witnesses}`);
-    if (d.court)         lines.push(`Court: ${d.court}`);
+    if (d.clientName) lines.push(`Client: ${d.clientName}`);
+    if (d.accusedName) lines.push(`Accused: ${d.accusedName}`);
+    if (d.caseType) lines.push(`Case type: ${d.caseType}`);
+    if (d.sections) lines.push(`Sections: ${d.sections}`);
+    if (d.description) lines.push(`Facts: ${d.description}`);
+    if (d.witnesses) lines.push(`Witnesses: ${d.witnesses}`);
+    if (d.court) lines.push(`Court: ${d.court}`);
     if (d.policeStation) lines.push(`Police station: ${d.policeStation}`);
-    if (d.firNumber)     lines.push(`FIR: ${d.firNumber}`);
+    if (d.firNumber) lines.push(`FIR: ${d.firNumber}`);
     lines.push(`\nTask: ${tool.label}`);
     return lines.join("\n");
   }
@@ -648,70 +522,130 @@ export default function LawyerWorkspace({ token, meta, onLogout }) {
     setLoading(false);
   }
 
+  const stepIndex = step === "dashboard" ? 0 : step === "form" ? 1 : step === "tools" ? 2 : 3;
+
   return (
-    <div className="app-shell lawyer">
-      <header className="header lawyer-header">
-        <div className="header-brand">
-          <div className="brand-icon lawyer-icon">⚖</div>
-          <div>
-            <div className="brand-name">LegalSeva — Advocate Workspace</div>
-            <div className="brand-sub verified-badge">✓ Verified · Bar Council of India</div>
+    <div className="flex flex-col min-h-[100dvh] bg-surface text-on-surface font-body-md selection:bg-primary/30 overflow-x-hidden">
+      {/* Sticky Top Header Harmonization */}
+      <header className="sticky top-0 z-10 bg-surface/80 backdrop-blur-[8px] border-b border-white/5 py-[0.75rem] px-[1rem] md:px-[1.5rem] flex justify-between items-center h-16 shadow-lg shadow-black/20">
+        <div className="flex items-center gap-[10px]">
+          <div className="flex items-center gap-[10px] cursor-pointer group" onClick={() => setStep("dashboard")}>
+            <span className="material-symbols-outlined gold-text-gradient text-[28px] align-middle" style={{ fontVariationSettings: "'FILL' 1" }}>balance</span>
+            <span className="font-headline-md text-headline-md font-bold gold-text-gradient tracking-tight">LegalSeva</span>
           </div>
+          <nav className="hidden lg:flex items-center gap-8 ml-10">
+            <button className={`text-[10px] font-bold uppercase tracking-[0.3em] relative transition-all ${step === "dashboard" ? "text-primary after:content-[''] after:absolute after:-bottom-[20px] after:left-0 after:w-full after:h-0.5 after:gold-bg-gradient" : "text-on-surface-variant/60 hover:text-white"}`} onClick={() => setStep("dashboard")}>Terminal</button>
+            <button className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/60 hover:text-white transition-colors">Library</button>
+            <button className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/60 hover:text-white transition-colors">Archives</button>
+          </nav>
         </div>
-        {/* Step breadcrumb */}
-        <div className="step-breadcrumb">
-          <span className={`step-crumb ${step === "dashboard" ? "active" : ""}`}>📁 Cases</span>
-          <span className="step-sep">›</span>
-          <span className={`step-crumb ${step === "form" ? "active" : ["tools","result"].includes(step) ? "done" : ""}`}>1 Case Details</span>
-          <span className="step-sep">›</span>
-          <span className={`step-crumb ${step === "tools" ? "active" : step === "result" ? "done" : ""}`}>2 Choose Action</span>
-          <span className="step-sep">›</span>
-          <span className={`step-crumb ${step === "result" ? "active" : ""}`}>3 Result</span>
-        </div>
-        <div className="header-actions">
-          <button className={`btn-outline ${step==="dashboard"?"btn-outline-active":""}`} onClick={() => setStep("dashboard")}>📁 My Cases ({cases.length})</button>
-          <div className="advocate-pill">{meta?.name || "Advocate"}</div>
-          <button className="btn-outline" onClick={onLogout}>Sign out</button>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5 border-r border-white/10 pr-6 hidden md:flex">
+            <span className="material-symbols-outlined text-on-surface-variant/40 cursor-pointer hover:text-primary transition-all align-middle">notifications</span>
+            <span className="material-symbols-outlined text-on-surface-variant/40 cursor-pointer hover:text-primary transition-all align-middle">analytics</span>
+          </div>
+          <div className="flex items-center gap-3 pl-2">
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] font-bold text-white uppercase tracking-[0.2em] leading-none">{meta?.name || "Verified Advocate"}</p>
+              <p className="text-[9px] text-primary font-bold uppercase tracking-[0.1em] mt-1 opacity-80">Enterprise Node</p>
+            </div>
+            <div className="h-10 w-10 rounded-[12px] gold-bg-gradient flex items-center justify-center text-on-primary-fixed font-bold text-sm shadow-xl shadow-primary/20 border border-white/10">
+              {meta?.name?.charAt(0) || "A"}
+            </div>
+          </div>
+          <button className="text-on-surface-variant/40 hover:text-error transition-colors ml-2" title="Logout" onClick={onLogout}>
+            <span className="material-symbols-outlined align-middle">power_settings_new</span>
+          </button>
         </div>
       </header>
 
-      <div className="workspace-body">
-        {step === "dashboard" && (
-          <CaseDashboard
-            cases={cases}
-            onNewCase={() => { setCaseData(null); setStep("form"); }}
-            onOpenCase={(c) => { setCaseData(c); setStep("tools"); }}
-            onEditCase={(c) => { setCaseData(c); setStep("form"); }}
-            onDeleteCase={handleDeleteCase}
-            meta={meta}
-          />
-        )}
-        {step === "form" && (
-          <CaseDescriptionForm onSubmit={handleCaseSubmit} initialData={caseData} onBack={() => setStep("dashboard")} />
-        )}
-        {step === "tools" && (
-          <ToolSelector
-            caseData={caseData}
-            onSelect={handleToolSelect}
-            onBack={() => setStep("form")}
-            onDashboard={() => setStep("dashboard")}
-          />
-        )}
-        {step === "result" && (
-          <ResultPanel
-            tool={selectedTool}
-            result={result}
-            docResult={docResult}
-            loading={loading}
-            error={error}
-            courtFilter={courtFilter}
-            setCourtFilter={setCourtFilter}
-            token={token}
-            onBack={() => { setStep("tools"); setResult(null); setDocResult(null); setError(""); }}
-            onCancel={cancelRequest}
-          />
-        )}
-      </div>
+      <main className="flex-grow flex flex-col items-center py-[2.5rem]">
+        <div className="w-full max-w-[900px] mx-auto px-[1.5rem] flex flex-col gap-[2rem]">
+          
+          {/* Workspace Progress Tracker */}
+          <nav className="w-full bg-surface-container/60 p-5 rounded-[20px] border border-white/5 shadow-inner">
+            <div className="flex items-center justify-between relative px-4">
+              <div className="absolute top-1/2 left-0 w-full h-px bg-white/5 -z-0 -translate-y-1/2"></div>
+              
+              <div className="flex flex-col items-center gap-3 relative z-10">
+                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center transition-all ${stepIndex >= 0 ? "gold-bg-gradient text-on-primary-fixed shadow-xl shadow-primary/30" : "bg-white/5 text-on-surface-variant/40"}`} onClick={() => setStep("dashboard")}>
+                  <span className="material-symbols-outlined text-xl align-middle">inventory_2</span>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all ${stepIndex >= 0 ? "text-primary" : "text-on-surface-variant/20"} hidden min-[520px]:block`}>Cases</span>
+              </div>
+
+              <div className="flex flex-col items-center gap-3 relative z-10">
+                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center transition-all ${stepIndex >= 1 ? "gold-bg-gradient text-on-primary-fixed shadow-xl shadow-primary/30" : "bg-white/5 text-on-surface-variant/40"}`} onClick={() => stepIndex > 1 && setStep("form")}>
+                  <span className="material-symbols-outlined text-xl align-middle">fact_check</span>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all ${stepIndex >= 1 ? "text-primary" : "text-on-surface-variant/20"} hidden min-[520px]:block`}>Details</span>
+              </div>
+
+              <div className="flex flex-col items-center gap-3 relative z-10">
+                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center transition-all ${stepIndex >= 2 ? "gold-bg-gradient text-on-primary-fixed shadow-xl shadow-primary/30" : "bg-white/5 text-on-surface-variant/40"}`} onClick={() => stepIndex > 2 && setStep("tools")}>
+                  <span className="material-symbols-outlined text-xl align-middle">psychology</span>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all ${stepIndex >= 2 ? "text-primary" : "text-on-surface-variant/20"} hidden min-[520px]:block`}>Action</span>
+              </div>
+
+              <div className="flex flex-col items-center gap-3 relative z-10">
+                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center transition-all ${stepIndex >= 3 ? "gold-bg-gradient text-on-primary-fixed shadow-xl shadow-primary/30" : "bg-white/5 text-on-surface-variant/40"}`}>
+                  <span className="material-symbols-outlined text-xl align-middle">verified</span>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all ${stepIndex >= 3 ? "text-primary" : "text-on-surface-variant/20"} hidden min-[520px]:block`}>Result</span>
+              </div>
+            </div>
+          </nav>
+
+          <div className="flex flex-col gap-[2rem]">
+            {step === "dashboard" && (
+              <CaseDashboard
+                cases={cases}
+                onNewCase={() => { setCaseData(null); setStep("form"); }}
+                onOpenCase={(c) => { setCaseData(c); setStep("tools"); }}
+                onEditCase={(c) => { setCaseData(c); setStep("form"); }}
+                onDeleteCase={handleDeleteCase}
+                meta={meta}
+              />
+            )}
+            {step === "form" && (
+              <CaseDescriptionForm onSubmit={handleCaseSubmit} initialData={caseData} onBack={() => setStep("dashboard")} />
+            )}
+            {step === "tools" && (
+              <ToolSelector
+                caseData={caseData}
+                onSelect={handleToolSelect}
+                onBack={() => setStep("form")}
+              />
+            )}
+            {step === "result" && (
+              <ResultPanel
+                tool={selectedTool}
+                result={result}
+                docResult={docResult}
+                loading={loading}
+                error={error}
+                courtFilter={courtFilter}
+                setCourtFilter={setCourtFilter}
+                token={token}
+                onBack={() => { setStep("tools"); setResult(null); setDocResult(null); setError(""); }}
+                onCancel={cancelRequest}
+              />
+            )}
+          </div>
+        </div>
+      </main>
+
+      <footer className="w-full py-[2rem] bg-surface-container-lowest border-t border-white/5 flex flex-col md:flex-row justify-between items-center px-[2rem] mt-auto gap-4">
+        <div className="flex items-center gap-3 opacity-30">
+          <span className="material-symbols-outlined gold-text-gradient text-xl align-middle" style={{ fontVariationSettings: "'FILL' 1" }}>balance</span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant">© 2024 LegalSeva Intelligence. Secure Professional Gateway.</span>
+        </div>
+        <div className="flex gap-8">
+          <a className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/40 hover:text-white transition-all hover:tracking-[0.4em]" href="#">System.status</a>
+          <a className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant/40 hover:text-white transition-all hover:tracking-[0.4em]" href="#">Protocol.privacy</a>
+        </div>
+      </footer>
     </div>
   );
 }
